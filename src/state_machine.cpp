@@ -9,6 +9,7 @@ GlassType_t detectedGlassType = GLASS_TYPE_UNKNOWN;
 float measuredThicknessMm = 0.0;
 int16_t finalAdcValueA = 0;
 int16_t finalAdcValueB = 0;
+float measuredWeightGrams = 0.0;
 
 // Variables internas de la máquina de estados
 namespace {
@@ -33,8 +34,18 @@ void state_machine_setup() {
     servo_C_move(SERVO_C_HOME_POS);
     servoAPos = SERVO_A_HOME_POS;
     servoBPos = SERVO_B_HOME_POS;
-    stateEntryTime = millis(); // Inicializar timer de estado
+    // Tarar la báscula al inicio y actualizar el offset calibrado
+    serial_print("Realizando tara inicial...\n", true);
+    cal_ScaleOffset = scale_tare(15); // Realizar tara y guardar el offset obtenido
+    // Aplicar la calibración completa (con el nuevo offset y el factor cargado)
+    scale_set_calibration(cal_ScaleOffset, cal_ScaleFactor);
+    // Opcional: Guardar inmediatamente este nuevo offset en EEPROM
+    // calibration_save();
+
+    stateEntryTime = millis();
     serial_print("Maquina de estados inicializada.\n", true);
+    // Establecer estado inicial (ya mostrará mensaje IDLE)
+    state_machine_set_state(STATE_IDLE);
 }
 
 // Función auxiliar para cambiar de estado y resetear el timer
@@ -54,7 +65,11 @@ void state_machine_set_state(SensorState_t newState) {
             lcd_display("Sistema Listo", "Coloque el vidrio", "para medir...");
             detectedGlassType = GLASS_TYPE_UNKNOWN;
             measuredThicknessMm = 0.0;
+            measuredWeightGrams = 0.0;
             break;
+        case STATE_DEBOUNCING_START:
+                lcd_display("Vidrio Detectado", "Esperando", "asentamiento...");
+                break;
         case STATE_MEASURING_RAW_START:
              // Resetear flags y posiciones antes de empezar a mover
             servoAMoving = false;
@@ -118,17 +133,27 @@ void state_machine_run() {
                 serial_print("Vidrio detectado!\n", true);
                 state_machine_set_state(STATE_DEBOUNCING_START);
             }
-            // Aquí se podría añadir lógica para entrar en calibración, ej:
-            // if (read_switch_instant(PIN_BOTON_CALIBRAR) == LOW) {
-            //     state_machine_set_state(STATE_CALIBRATION);
-            // }
+            if (Serial.available() > 0) {
+                char cmd = Serial.read();
+                if (cmd == 'c' || cmd == 'C') { // Comando 'c' para calibrar
+                    while (Serial.available() > 0) Serial.read(); // Limpiar buffer
+                    state_machine_set_state(STATE_CALIBRATION);
+                }
+            }
             break;
 
         case STATE_DEBOUNCING_START:
-            // Espera para que el vidrio se asiente
             if (currentTime - stateEntryTime > GLASS_SETTLE_TIME) {
-                // Re-verificar sensores *después* del tiempo de espera
-                int crudo_now = read_switch_debounced(CRUDO_PIN); // Releer estado estable
+                // LEER PESO DESPUÉS DE ASENTARSE
+                serial_print("Leyendo peso...\n", true);
+                lcd_display("Leyendo peso...", "", "", "Espere...");
+                measuredWeightGrams = scale_get_weight_grams(5); // Promediar 5 lecturas
+                serial_print("Peso leido: ", false);
+                serial_print(measuredWeightGrams, 1, false);
+                serial_print(" g\n", true);
+
+                // Ahora determinar tipo basado en switches
+                int crudo_now = read_switch_debounced(CRUDO_PIN);
                 int dvh21_now = read_switch_debounced(DVH21_PIN);
 
                 if (crudo_now == LOW && dvh21_now == HIGH) {
@@ -136,7 +161,7 @@ void state_machine_run() {
                 } else if (dvh21_now == LOW) {
                     state_machine_set_state(STATE_MEASURING_DVH);
                 } else {
-                    serial_print("Vidrio retirado durante espera.\n", true);
+                    serial_print("Vidrio retirado durante espera/pesaje.\n", true);
                     state_machine_set_state(STATE_IDLE);
                 }
             }
@@ -193,7 +218,7 @@ void state_machine_run() {
         case STATE_CALCULATING:
             // El cálculo se hace aquí, usando las lecturas guardadas
             measuredThicknessMm = calculate_thickness_adc(finalAdcValueA, finalAdcValueB);
-            detectedGlassType = GLASS_TYPE_RAW; // Asignar tipo
+            detectedGlassType = GLASS_TYPE_RAW;
 
             // Validación básica del resultado (ejemplo)
             if (measuredThicknessMm < 0.5 || measuredThicknessMm > 15.0) { // Rango irreal para vidrio crudo
@@ -240,26 +265,37 @@ void state_machine_run() {
             {
                 char line2_buf[LCD_COLS + 1];
                 char line3_buf[LCD_COLS + 1];
+                char line4_buf[LCD_COLS + 1];
+                float weight_kg = measuredWeightGrams / 1000.0;
+                snprintf(line4_buf, sizeof(line4_buf), "Peso: %.2f kg", weight_kg);
+
                 switch (detectedGlassType) {
                     case GLASS_TYPE_RAW:
                         snprintf(line2_buf, sizeof(line2_buf), "Tipo: Vidrio Crudo");
                         snprintf(line3_buf, sizeof(line3_buf), "Espesor: %.2f mm", measuredThicknessMm);
-                        lcd_display("Medicion Completa", line2_buf, line3_buf, "Retire el vidrio");
+                        lcd_display("Medicion Completa", line2_buf, line3_buf, line4_buf); // Mostrar 4 líneas
+                        serial_print("-> Tipo: Crudo, Espesor: ", false); serial_print(measuredThicknessMm, 2, false);
+                        serial_print(" mm, Peso: ", false); serial_print(weight_kg, 2, false); serial_print(" kg\n", true);
                         break;
                     case GLASS_TYPE_DVH21:
-                        lcd_display("Medicion Completa", "Tipo: DVH 21mm", "", "Retire el vidrio");
-                        break;
-                    case GLASS_TYPE_DVH28:
-                        lcd_display("Medicion Completa", "Tipo: DVH 28mm", "", "Retire el vidrio");
-                        break;
+                        snprintf(line2_buf, sizeof(line2_buf), "Tipo: DVH 21mm");
+                        // line3 podría quedar vacía o mostrar dimensiones fijas si se definen
+                        lcd_display("Medicion Completa", line2_buf, "", line4_buf);
+                        serial_print("-> Tipo: DVH 21mm, Peso: ", false); serial_print(weight_kg, 2, false); serial_print(" kg\n", true);
+                       break;
+                   case GLASS_TYPE_DVH28:
+                        snprintf(line2_buf, sizeof(line2_buf), "Tipo: DVH 28mm");
+                        lcd_display("Medicion Completa", line2_buf, "", line4_buf);
+                        serial_print("-> Tipo: DVH 28mm, Peso: ", false); serial_print(weight_kg, 2, false); serial_print(" kg\n", true);
+                       break;
                     case GLASS_TYPE_MISPLACED:
                         lcd_display("!! ERROR !!", "Vidrio mal colocado", "Retire y reintente");
                         state_machine_set_state(STATE_ERROR); // Ir a estado de error
                         return; // Salir para no pasar a WAITING_REMOVAL inmediatamente
-                    default: // Incluye GLASS_TYPE_UNKNOWN
-                        lcd_display("!! ERROR !!", "Tipo desconocido", "Contacte soporte");
-                        state_machine_set_state(STATE_ERROR); // Ir a estado de error
-                        return; // Salir
+                    default:
+                        serial_print("Error: Estado desconocido - ", false); serial_print((int)currentState, true);
+                        state_machine_set_state(STATE_IDLE);
+                        break;
                 }
             }
             // Si no fue un error, esperar a que retiren el vidrio

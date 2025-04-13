@@ -4,6 +4,7 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <Adafruit_ADS1X15.h>
+#include <HX711.h> // Añadir la librería para el módulo HX711
 
 // --- Objetos globales de Hardware (privados a este módulo) ---
 namespace { // Usar namespace anónimo para encapsular
@@ -12,6 +13,7 @@ namespace { // Usar namespace anónimo para encapsular
     Servo ServoC;
     LiquidCrystal_I2C lcd(LCD_I2C_ADDRESS, LCD_COLS, LCD_ROWS);
     Adafruit_ADS1115 ads;
+    HX711 scale; // Objeto para la báscula
 
     // Estructura para manejar el estado anti-rebote por pin
     struct DebounceState {
@@ -70,6 +72,18 @@ bool hardware_setup() {
     pinMode(SSCP_PIN, INPUT_PULLUP);
     pinMode(SSCN_PIN, INPUT_PULLUP);
     serial_print("Pines de entrada configurados.\n", true);
+
+    // Inicializa HX711
+    serial_print("Iniciando HX711...\n", true);
+    scale.begin(HX711_DT_PIN, HX711_SCK_PIN);
+    if (!scale.is_ready()) {
+         serial_print("WARN: HX711 no encontrado o no listo inicialmente.\n", true);
+         // Podría no ser un error crítico si se recupera, pero informar.
+         // lcd_display("!! ADVERTENCIA !!", "Bascula HX711", "no detectada");
+         // delay(2000); // Mostrar advertencia
+    } else {
+        serial_print("HX711 listo.\n", true);
+    }
 
     serial_print("Hardware IO Listo.\n", true);
     lcd_clear(); // Limpiar LCD después de la inicialización
@@ -139,6 +153,50 @@ int read_switch_debounced(uint8_t pin) {
     }
 }
 
+// --- Funciones Báscula ---
+
+void scale_set_calibration(long offset, float factor) {
+    scale.set_offset(offset);
+    scale.set_scale(factor);
+    serial_print("Calibracion bascula aplicada: Offset=", false);
+    serial_print(offset, false);
+    serial_print(" Factor=", false);
+    serial_print(factor, 3, true);
+}
+
+long scale_tare(int times) {
+    serial_print("Realizando Tara... ", false);
+    scale.tare(times); // La librería calcula y establece el offset internamente
+    long current_offset = scale.get_offset(); // Obtenemos el offset calculado por la librería
+    serial_print("Tara completa. Offset calculado: ", false);
+    serial_print(current_offset, true);
+    return current_offset; // Devolvemos el offset para guardarlo si es necesario
+}
+
+float scale_get_weight_grams(int times) {
+    if (scale.is_ready()) {
+        // La función get_units() aplica el factor y el offset
+        float weight = scale.get_units(times);
+        // Serial.print("Peso medido (g): "); Serial.println(weight); // Debug frecuente
+        return weight;
+    } else {
+        serial_print("WARN: HX711 no listo para leer peso.\n", true);
+        return 0.0; // O un valor NaN si se prefiere indicar error
+    }
+}
+
+long scale_get_raw_reading(int times) {
+     if (scale.is_ready()) {
+        return scale.read_average(times);
+    } else {
+        serial_print("WARN: HX711 no listo para lectura raw.\n", true);
+        return 0L; // O un valor indicativo de error
+    }
+}
+
+bool scale_is_ready() {
+    return scale.is_ready();
+}
 
 void lcd_display(const char* line1, const char* line2, const char* line3, const char* line4) {
     lcd.clear();

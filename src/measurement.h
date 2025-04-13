@@ -12,6 +12,14 @@ extern float cal_MmPerAdcA;
 extern float cal_MmPerAdcB;
 extern float cal_TotalGapMmHome;
 
+// --- Variables Globales de Calibración Báscula ---
+extern float cal_ScaleFactor; // Factor de escala (uds raw / gramo)
+extern long cal_ScaleOffset;  // Offset (valor raw de tara)
+
+// --- Variables de Resultado ---
+extern float measuredThicknessMm; // Espesor medido (si aplica)
+extern float measuredWeightGrams; // Peso medido en gramos
+
 // --- Funciones de Cálculo ---
 
 /**
@@ -45,5 +53,12 @@ void calibration_save();
  * (Requiere implementación detallada de la interacción con el usuario).
  */
 void calibration_enter_mode();
+
+/**
+ * @brief Guía al usuario para calibrar el factor de escala de la báscula.
+ * Requiere un peso conocido. Guarda el nuevo factor en EEPROM.
+ * (Requiere implementación detallada).
+ */
+void scale_perform_calibration();
 
 #endif // MEASUREMENT_H

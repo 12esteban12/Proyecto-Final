@@ -57,6 +57,47 @@ int read_switch_instant(uint8_t pin);
  */
 int read_switch_debounced(uint8_t pin);
 
+
+// --- Funciones de Báscula (HX711) ---
+
+/**
+ * @brief Configura la báscula HX711 con valores de calibración iniciales.
+ * No realiza la inicialización del hardware HX711 (eso ocurre en hardware_setup).
+ * @param offset Valor de offset (tara) leído de EEPROM o default.
+ * @param factor Factor de escala leído de EEPROM o default.
+ */
+void scale_set_calibration(long offset, float factor);
+
+/**
+ * @brief Realiza la tara de la báscula, calculando el offset actual.
+ * @param times Número de lecturas a promediar para la tara (más es más estable).
+ * @return El valor raw del offset calculado.
+ */
+long scale_tare(int times = 10);
+
+/**
+ * @brief Obtiene el peso actual de la báscula en gramos.
+ * Utiliza el factor de escala y offset configurados.
+ * Es una función BLOQUEANTE mientras lee.
+ * @param times Número de lecturas a promediar para obtener el peso.
+ * @return El peso calculado en gramos. Puede devolver 0 si la báscula no está lista.
+ */
+float scale_get_weight_grams(int times = 1);
+
+/**
+ * @brief Obtiene la lectura raw promedio del HX711.
+ * Útil para la calibración.
+ * @param times Número de lecturas a promediar.
+ * @return El valor raw promedio.
+ */
+long scale_get_raw_reading(int times = 10);
+
+/**
+ * @brief Verifica si el chip HX711 está listo para enviar datos.
+ * @return true si está listo, false si no.
+ */
+bool scale_is_ready();
+
 // --- Funciones de Salida (LCD) ---
 
 /**

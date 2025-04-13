@@ -9,6 +9,10 @@
 #define SERVO_B_PIN 10
 #define SERVO_C_PIN 8
 
+// Pines para el HX711
+#define HX711_DT_PIN 4   // Pin de Datos (DT) conectado a A1 en la imagen (pero usamos D4 en Mega)
+#define HX711_SCK_PIN 5  // Pin de Clock (SCK) conectado a A0 en la imagen (pero usamos D5 en Mega)
+
 // Switches de Entrada (Usando INPUT_PULLUP)
 #define CRUDO_PIN 37
 #define DVH21_PIN 33
@@ -36,6 +40,10 @@
 #define MM_PER_ADC_B_DEFAULT 0.0015
 #define TOTAL_GAP_MM_HOME_DEFAULT 66.5
 
+// El signo negativo es común.
+#define SCALE_FACTOR_DEFAULT -430.0 // Ejemplo: -430 unidades raw por gramo. ¡¡CALIBRAR!!
+#define SCALE_OFFSET_DEFAULT 0L     // Offset (Tara), se ajusta automáticamente al tarar.
+
 // --- Direcciones EEPROM (para guardar calibración) ---
 #define EEPROM_ADDR_CAL_VALID 0     // 1 byte
 #define EEPROM_ADDR_ADC_A_HOME (EEPROM_ADDR_CAL_VALID + 1) // 2 bytes (int16_t)
@@ -44,6 +52,11 @@
 #define EEPROM_ADDR_MM_PER_ADC_B (EEPROM_ADDR_MM_PER_ADC_A + sizeof(float)) // 4 bytes
 #define EEPROM_ADDR_TOTAL_GAP (EEPROM_ADDR_MM_PER_ADC_B + sizeof(float)) // 4 bytes
 #define CAL_VALID_FLAG 0x5A // Valor para marcar calibración como válida
+#define EEPROM_ADDR_SCALE_FACTOR (EEPROM_ADDR_TOTAL_GAP + sizeof(float)) // 4 bytes (float)
+#define EEPROM_ADDR_SCALE_OFFSET (EEPROM_ADDR_SCALE_FACTOR + sizeof(float)) // 4 bytes (long)
+
+#define CAL_VALID_FLAG 0x5A // Valor para marcar calibración como válida (cubre ambas)
+
 
 // --- Configuración ADC ADS1115 ---
 #define ADS1115_I2C_ADDRESS 0x48 // Dirección I2C por defecto

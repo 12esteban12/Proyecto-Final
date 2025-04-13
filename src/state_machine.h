@@ -35,6 +35,7 @@ extern GlassType_t detectedGlassType;
 extern float measuredThicknessMm;
 extern int16_t finalAdcValueA; // Guardamos la lectura ADC de A en contacto
 extern int16_t finalAdcValueB; // Guardamos la lectura ADC de B en contacto
+extern float measuredWeightGrams; // Peso medido en gramos 
 
 // --- Funciones Principales de la Máquina de Estados ---
 
